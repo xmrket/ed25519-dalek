@@ -453,7 +453,7 @@ mod integrations {
 
         let (k, v) = m.get_key_value(&public_from_secret).unwrap();
         assert_eq!(k, &public_from_secret);
-        assert_eq!(v.clone(), "Updated Value");
+        assert_eq!(v, &"Updated Value");
         assert_eq!(m.len(), 1usize);
 
         let second_secret: SigningKey = SigningKey::generate(&mut csprng);
@@ -463,7 +463,7 @@ mod integrations {
 
         let (k, v) = m.get_key_value(&public_from_second_secret).unwrap();
         assert_eq!(k, &public_from_second_secret);
-        assert_eq!(v.clone(), "Second public key");
+        assert_eq!(v, &"Second public key");
         assert_eq!(m.len(), 2usize);
     }
 }

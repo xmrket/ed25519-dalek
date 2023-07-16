@@ -16,7 +16,7 @@ use ed25519::pkcs8;
 use rand_core::CryptoRngCore;
 
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 
 use sha2::Sha512;
 
@@ -57,6 +57,7 @@ pub type SecretKey = [u8; SECRET_KEY_LENGTH];
 // Invariant: `public` is always the public key of `secret`. This prevents the signing function
 // oracle attack described in https://github.com/MystenLabs/ed25519-unsafe-libs
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SigningKey {
     /// The secret half of this signing key.
     pub(crate) secret_key: SecretKey,
@@ -653,69 +654,6 @@ impl TryFrom<pkcs8::PrivateKeyInfo<'_>> for SigningKey {
 
     fn try_from(private_key: pkcs8::PrivateKeyInfo<'_>) -> pkcs8::Result<Self> {
         pkcs8::KeypairBytes::try_from(private_key)?.try_into()
-    }
-}
-
-#[cfg(feature = "serde")]
-impl Serialize for SigningKey {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_bytes(&self.secret_key)
-    }
-}
-
-#[cfg(feature = "serde")]
-impl<'d> Deserialize<'d> for SigningKey {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'d>,
-    {
-        struct SigningKeyVisitor;
-
-        impl<'de> serde::de::Visitor<'de> for SigningKeyVisitor {
-            type Value = SigningKey;
-
-            fn expecting(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                write!(formatter, concat!("An ed25519 signing (private) key"))
-            }
-
-            fn visit_borrowed_bytes<E: serde::de::Error>(
-                self,
-                bytes: &'de [u8],
-            ) -> Result<Self::Value, E> {
-                SigningKey::try_from(bytes.as_ref()).map_err(E::custom)
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where
-                A: serde::de::SeqAccess<'de>,
-            {
-                let mut bytes = [0u8; 32];
-                for i in 0..32 {
-                    bytes[i] = seq
-                        .next_element()?
-                        .ok_or_else(|| serde::de::Error::invalid_length(i, &"expected 32 bytes"))?;
-                }
-
-                let remaining = (0..)
-                    .map(|_| seq.next_element::<u8>())
-                    .take_while(|el| matches!(el, Ok(Some(_))))
-                    .count();
-
-                if remaining > 0 {
-                    return Err(serde::de::Error::invalid_length(
-                        32 + remaining,
-                        &"expected 32 bytes",
-                    ));
-                }
-
-                SigningKey::try_from(bytes).map_err(serde::de::Error::custom)
-            }
-        }
-
-        deserializer.deserialize_bytes(SigningKeyVisitor)
     }
 }
 

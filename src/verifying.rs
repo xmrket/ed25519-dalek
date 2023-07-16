@@ -28,7 +28,7 @@ use sha2::Sha512;
 use ed25519::pkcs8;
 
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "digest")]
 use crate::context::Context;
@@ -56,6 +56,7 @@ use crate::{
 /// are rejected, use [`VerifyingKey::verify_strict`].
 // Invariant: VerifyingKey.1 is always the decompression of VerifyingKey.0
 #[derive(Copy, Clone, Default, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct VerifyingKey {
     /// Serialized compressed Edwards-y point.
     pub(crate) compressed: CompressedEdwardsY,
@@ -618,69 +619,5 @@ impl TryFrom<pkcs8::spki::SubjectPublicKeyInfoRef<'_>> for VerifyingKey {
 
     fn try_from(public_key: pkcs8::spki::SubjectPublicKeyInfoRef<'_>) -> pkcs8::spki::Result<Self> {
         pkcs8::PublicKeyBytes::try_from(public_key)?.try_into()
-    }
-}
-
-#[cfg(feature = "serde")]
-impl Serialize for VerifyingKey {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_bytes(&self.as_bytes()[..])
-    }
-}
-
-#[cfg(feature = "serde")]
-impl<'d> Deserialize<'d> for VerifyingKey {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'d>,
-    {
-        struct VerifyingKeyVisitor;
-
-        impl<'de> serde::de::Visitor<'de> for VerifyingKeyVisitor {
-            type Value = VerifyingKey;
-
-            fn expecting(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                write!(formatter, concat!("An ed25519 verifying (public) key"))
-            }
-
-            fn visit_borrowed_bytes<E: serde::de::Error>(
-                self,
-                bytes: &'de [u8],
-            ) -> Result<Self::Value, E> {
-                VerifyingKey::try_from(bytes.as_ref()).map_err(E::custom)
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where
-                A: serde::de::SeqAccess<'de>,
-            {
-                let mut bytes = [0u8; 32];
-
-                for i in 0..32 {
-                    bytes[i] = seq
-                        .next_element()?
-                        .ok_or_else(|| serde::de::Error::invalid_length(i, &"expected 32 bytes"))?;
-                }
-
-                let remaining = (0..)
-                    .map(|_| seq.next_element::<u8>())
-                    .take_while(|el| matches!(el, Ok(Some(_))))
-                    .count();
-
-                if remaining > 0 {
-                    return Err(serde::de::Error::invalid_length(
-                        32 + remaining,
-                        &"expected 32 bytes",
-                    ));
-                }
-
-                VerifyingKey::try_from(&bytes[..]).map_err(serde::de::Error::custom)
-            }
-        }
-
-        deserializer.deserialize_bytes(VerifyingKeyVisitor)
     }
 }
